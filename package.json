@@ -1,0 +1,29 @@
+{
+  "name": "tdp-agente-tareas",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Agente de tareas WhatsApp de Taller del Patinete — escucha grupos vía Evolution API, entiende texto/audio/vídeo con IA y mantiene el gestor de tareas (Jira) al día sin duplicados.",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node scripts/migrate.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.111.0",
+    "drizzle-orm": "^0.45.2",
+    "fastify": "^5.2.0",
+    "pg": "^8.22.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.20.0",
+    "drizzle-kit": "^0.31.10",
+    "tsx": "^4.23.1",
+    "typescript": "^5.9.0"
+  }
+}
