@@ -1,0 +1,121 @@
+# =============================================================================
+#  Despliegue en Coolify SIN configuración manual — Coolify es efímero.
+#
+#  · Los pushes a la rama de despliegue los despliega la GitHub App de Coolify
+#    (auto-deploy del recurso). Este workflow re-sincroniza envs/dominios desde
+#    los SECRETS DEL REPO en cada push y permite reconstruir un Coolify nuevo.
+#  · bootstrap (manual): crea el recurso Docker Compose por API y deja el uuid
+#    como variable del repo (COOLIFY_APP_UUID).
+#  · deploy: sincroniza variables + dominios y lanza el deploy.
+#
+#  Secrets necesarios: ver .env.example (bloque "Secrets de GitHub").
+#  COOLIFY_API_URL debe ser alcanzable desde los runners de GitHub (URL pública
+#  del panel; la misma que usa la GitHub App de Coolify para sus webhooks).
+# =============================================================================
+name: Deploy en Coolify
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "bootstrap = crear el recurso en un Coolify nuevo; deploy = sincronizar y desplegar"
+        type: choice
+        options: [deploy, bootstrap]
+        default: deploy
+
+permissions:
+  contents: read
+  actions: write # para guardar COOLIFY_APP_UUID como variable del repo tras bootstrap
+
+concurrency:
+  group: coolify-deploy
+  cancel-in-progress: false
+
+env:
+  # --- Coolify (API) ---
+  COOLIFY_API_URL: ${{ secrets.COOLIFY_API_URL }}
+  COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+  COOLIFY_PROJECT_UUID: ${{ secrets.COOLIFY_PROJECT_UUID }}
+  COOLIFY_SERVER_UUID: ${{ secrets.COOLIFY_SERVER_UUID }}
+  COOLIFY_GITHUB_APP_UUID: ${{ secrets.COOLIFY_GITHUB_APP_UUID }}
+  COOLIFY_ENVIRONMENT_NAME: ${{ vars.COOLIFY_ENVIRONMENT_NAME }}
+  COOLIFY_APP_UUID: ${{ vars.COOLIFY_APP_UUID }}
+  DEPLOY_BRANCH: ${{ vars.DEPLOY_BRANCH }}
+  # --- Agente ---
+  DATABASE_URL: ${{ secrets.DATABASE_URL }}
+  DATABASE_CA_CERT: ${{ secrets.DATABASE_CA_CERT }}
+  AGENT_WEBHOOK_TOKEN: ${{ secrets.AGENT_WEBHOOK_TOKEN }}
+  AGENT_ADMIN_TOKEN: ${{ secrets.AGENT_ADMIN_TOKEN }}
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+  ANTHROPIC_MEDIA_MODEL: ${{ vars.ANTHROPIC_MEDIA_MODEL }}
+  STT_API_URL: ${{ vars.STT_API_URL }}
+  STT_API_KEY: ${{ secrets.STT_API_KEY }}
+  STT_MODEL: ${{ vars.STT_MODEL }}
+  TASK_PROVIDER: ${{ vars.TASK_PROVIDER }}
+  JIRA_BASE_URL: ${{ vars.JIRA_BASE_URL }}
+  JIRA_EMAIL: ${{ vars.JIRA_EMAIL }}
+  JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+  JIRA_PROJECT_KEY: ${{ vars.JIRA_PROJECT_KEY }}
+  JIRA_ISSUE_TYPE: ${{ vars.JIRA_ISSUE_TYPE }}
+  N8N_EVENTS_WEBHOOK_URL: ${{ secrets.N8N_EVENTS_WEBHOOK_URL }}
+  # --- Evolution API ---
+  EVOLUTION_API_KEY: ${{ secrets.EVOLUTION_API_KEY }}
+  EVOLUTION_INSTANCE: ${{ vars.EVOLUTION_INSTANCE }}
+  EVOLUTION_DATABASE_URL: ${{ secrets.EVOLUTION_DATABASE_URL }}
+  EVOLUTION_DOMAIN: ${{ vars.EVOLUTION_DOMAIN }}
+  EVOLUTION_IMAGE: ${{ vars.EVOLUTION_IMAGE }}
+  CONFIG_SESSION_PHONE_CLIENT: ${{ vars.CONFIG_SESSION_PHONE_CLIENT }}
+  EVOLUTION_LOG_LEVEL: ${{ vars.EVOLUTION_LOG_LEVEL }}
+  # --- Dominios / perfiles ---
+  AGENT_DOMAIN: ${{ vars.AGENT_DOMAIN }}
+  COMPOSE_PROFILES: ${{ vars.COMPOSE_PROFILES }}
+  # --- N8N (perfil opcional) ---
+  N8N_IMAGE: ${{ vars.N8N_IMAGE }}
+  N8N_DOMAIN: ${{ vars.N8N_DOMAIN }}
+  N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
+  N8N_DB_NAME: ${{ vars.N8N_DB_NAME }}
+  N8N_DB_HOST: ${{ vars.N8N_DB_HOST }}
+  N8N_DB_PORT: ${{ vars.N8N_DB_PORT }}
+  N8N_DB_USER: ${{ vars.N8N_DB_USER }}
+  N8N_DB_PASSWORD: ${{ secrets.N8N_DB_PASSWORD }}
+  N8N_DB_SSL: ${{ vars.N8N_DB_SSL }}
+
+jobs:
+  bootstrap:
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'bootstrap'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Crear recurso en Coolify + envs + dominios + deploy
+        id: bootstrap
+        run: node scripts/coolify/deploy.mjs bootstrap
+      - name: Guardar COOLIFY_APP_UUID como variable del repo
+        if: steps.bootstrap.outputs.app_uuid != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X PATCH "repos/${GITHUB_REPOSITORY}/actions/variables/COOLIFY_APP_UUID" \
+            -f name=COOLIFY_APP_UUID -f value="${{ steps.bootstrap.outputs.app_uuid }}" \
+          || gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/variables" \
+            -f name=COOLIFY_APP_UUID -f value="${{ steps.bootstrap.outputs.app_uuid }}" \
+          || echo "::warning::No se pudo guardar la variable; créala a mano: COOLIFY_APP_UUID=${{ steps.bootstrap.outputs.app_uuid }}"
+
+  deploy:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.action == 'deploy')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Sincronizar envs + dominios y desplegar
+        run: |
+          if [ -z "$COOLIFY_APP_UUID" ]; then
+            echo "::notice::COOLIFY_APP_UUID sin definir — ejecuta el workflow con action=bootstrap primero. Nada que hacer."
+            exit 0
+          fi
+          node scripts/coolify/deploy.mjs deploy

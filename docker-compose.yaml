@@ -1,14 +1,17 @@
 # =============================================================================
-#  TDP Agente de tareas en Coolify — build desde este repo en cada push.
+#  TDP Agente de tareas — stack COMPLETO para Coolify (build en cada push).
 #
-#  En Coolify: + New Resource → Docker Compose desde este repo (GitHub App).
-#  Variables por Environment/Shared Variables (ver .env.example). El servicio
-#  expone :3100 y se une a la red 'coolify' (Traefik enruta según el dominio
-#  fijado en la UI). Evolution API y N8N se despliegan como recursos propios
-#  de Coolify (imágenes oficiales) — este compose solo levanta el agente.
+#  Coolify es EFÍMERO: nada se configura a mano en su UI. Este compose define
+#  TODAS las apps del stack (agente + Evolution API + Redis, y n8n opcional);
+#  las variables viven en GitHub (Secrets del repo) y el workflow
+#  .github/workflows/deploy.yml crea el recurso por API, sincroniza las envs,
+#  asigna dominios (docker_compose_domains) y lanza el deploy. Para reconstruir
+#  un Coolify nuevo: ejecutar el workflow con action=bootstrap. Ver
+#  docs/despliegue.md.
 #
-#  BD: PostgreSQL gestionada de UpCloud (DATABASE_URL). El servicio 'db' es
-#  solo para desarrollo local: docker compose --profile local-db up
+#  Datos persistentes SIEMPRE fuera del host: PostgreSQL gestionada de UpCloud
+#  (agente y Evolution; la sesión de WhatsApp sobrevive en BD a la pérdida del
+#  host). Redis es solo caché (perderlo no rompe nada).
 # =============================================================================
 services:
   agente:
@@ -19,9 +22,10 @@ services:
     environment:
       DATABASE_URL: "${DATABASE_URL}"
       DATABASE_CA_CERT: "${DATABASE_CA_CERT:-}"
-      EVOLUTION_API_URL: "${EVOLUTION_API_URL}"
+      # Evolution corre en este mismo compose: se habla por la red interna.
+      EVOLUTION_API_URL: "${EVOLUTION_API_URL:-http://evolution:8080}"
       EVOLUTION_API_KEY: "${EVOLUTION_API_KEY}"
-      EVOLUTION_INSTANCE: "${EVOLUTION_INSTANCE}"
+      EVOLUTION_INSTANCE: "${EVOLUTION_INSTANCE:-tdp-tareas}"
       AGENT_WEBHOOK_TOKEN: "${AGENT_WEBHOOK_TOKEN}"
       AGENT_ADMIN_TOKEN: "${AGENT_ADMIN_TOKEN}"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
@@ -47,13 +51,105 @@ services:
     labels:
       - "traefik.docker.network=coolify"
     security_opt: [no-new-privileges:true]
+    depends_on:
+      - evolution
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3100/health"]
       interval: 30s
       timeout: 5s
       retries: 3
 
-  # Solo desarrollo local; en producción la BD es la gestionada de UpCloud.
+  # ---------------------------------------------------------------------------
+  # Evolution API — pasarela WhatsApp. Persistencia COMPLETA en la PostgreSQL
+  # gestionada (instancias, sesión, mensajes): el contenedor puede morir y la
+  # instancia vuelve conectada sin re-escanear el QR.
+  # ---------------------------------------------------------------------------
+  evolution:
+    image: "${EVOLUTION_IMAGE:-evoapicloud/evolution-api:v2.3.1}"
+    restart: unless-stopped
+    environment:
+      SERVER_URL: "https://${EVOLUTION_DOMAIN}"
+      AUTHENTICATION_API_KEY: "${EVOLUTION_API_KEY}"
+      CONFIG_SESSION_PHONE_CLIENT: "${CONFIG_SESSION_PHONE_CLIENT:-TDP}"
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: "postgresql"
+      DATABASE_CONNECTION_URI: "${EVOLUTION_DATABASE_URL}"
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      DATABASE_SAVE_MESSAGE_UPDATE: "false"
+      DATABASE_SAVE_DATA_CONTACTS: "true"
+      DATABASE_SAVE_DATA_CHATS: "true"
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: "redis://redis:6379/6"
+      CACHE_REDIS_PREFIX_KEY: "evolution"
+      CACHE_LOCAL_ENABLED: "false"
+      LOG_LEVEL: "${EVOLUTION_LOG_LEVEL:-ERROR,WARN,INFO}"
+    expose:
+      - "8080"
+    networks:
+      - app
+      - coolify
+    labels:
+      - "traefik.docker.network=coolify"
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  # Caché de Evolution — efímero a propósito (sin volumen).
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    networks: [app]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # N8N (OPCIONAL, fase 4 del roadmap) — se activa añadiendo el secret
+  # COMPOSE_PROFILES=n8n (el workflow lo sincroniza como env del recurso).
+  # Estado en la PostgreSQL gestionada; N8N_ENCRYPTION_KEY fija para que las
+  # credenciales guardadas sobrevivan a la recreación del contenedor.
+  # ---------------------------------------------------------------------------
+  n8n:
+    profiles: ["n8n"]
+    image: "${N8N_IMAGE:-docker.n8n.io/n8nio/n8n:1.76.1}"
+    restart: unless-stopped
+    environment:
+      N8N_HOST: "${N8N_DOMAIN:-}"
+      N8N_PROTOCOL: "https"
+      WEBHOOK_URL: "https://${N8N_DOMAIN:-}"
+      N8N_ENCRYPTION_KEY: "${N8N_ENCRYPTION_KEY:-}"
+      DB_TYPE: "postgresdb"
+      DB_POSTGRESDB_DATABASE: "${N8N_DB_NAME:-n8n}"
+      DB_POSTGRESDB_HOST: "${N8N_DB_HOST:-}"
+      DB_POSTGRESDB_PORT: "${N8N_DB_PORT:-5432}"
+      DB_POSTGRESDB_USER: "${N8N_DB_USER:-n8n}"
+      DB_POSTGRESDB_PASSWORD: "${N8N_DB_PASSWORD:-}"
+      DB_POSTGRESDB_SSL_ENABLED: "${N8N_DB_SSL:-true}"
+      DB_POSTGRESDB_SSL_REJECT_UNAUTHORIZED: "false"
+      GENERIC_TIMEZONE: "Europe/Madrid"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    expose:
+      - "5678"
+    networks:
+      - app
+      - coolify
+    labels:
+      - "traefik.docker.network=coolify"
+    security_opt: [no-new-privileges:true]
+
+  # Solo desarrollo local (docker compose --profile local-db up); en producción
+  # la BD es la gestionada de UpCloud.
   db:
     profiles: ["local-db"]
     image: postgres:17-alpine
@@ -75,6 +171,7 @@ services:
 volumes:
   pg_data:
   agente_data:
+  n8n_data:
 
 networks:
   app:

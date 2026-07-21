@@ -1,68 +1,87 @@
-# Despliegue en Coolify
+# Despliegue — Coolify efímero, todo desde el repo
 
-Tres recursos en Coolify (mismo proyecto, red `coolify`):
+Principio: **Coolify no guarda ninguna configuración a mano**. Todo el stack
+está definido en este repo (`docker-compose.yaml`: agente + Evolution API +
+Redis, y n8n opcional), las variables viven en **GitHub → Settings → Secrets
+and variables → Actions**, y el workflow
+[`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) crea el
+recurso en Coolify por API, sincroniza envs, asigna dominios y despliega.
+Si el Coolify se pierde, se reconstruye entero con un click.
 
-## 1. Evolution API (recurso propio)
+Los datos persistentes nunca están en el host de Coolify: el agente y
+Evolution guardan TODO en la PostgreSQL gestionada de UpCloud (incluida la
+sesión de WhatsApp → no hay que re-escanear el QR al recrear el contenedor).
+Redis es solo caché.
 
-- **+ New Resource → Docker Image** con la imagen oficial
-  `evoapicloud/evolution-api:latest` (o la versión fijada que se decida).
-- Variables mínimas: `AUTHENTICATION_API_KEY` (será `EVOLUTION_API_KEY` del
-  agente), BD propia si se quiere persistencia completa (soporta Postgres) y
-  `CONFIG_SESSION_PHONE_CLIENT=TDP`.
-- Dominio interno o público (p. ej. `evolution.tallerdelpatinete.es`).
-- En el manager (`/manager`): crear la instancia (p. ej. `tdp-tareas`) y
-  **escanear el QR** con el número de teléfono dedicado al agente.
+## Preparación (una vez)
 
-> El número del agente debe estar metido en los grupos que va a observar.
+1. **BDs en la PostgreSQL gestionada**: usuarios/BDs `tdp_agente` (agente) y
+   `evolution` (Evolution API). Si se activa n8n, también `n8n`.
+2. **Secrets/Variables del repo en GitHub**: todos los nombres están en
+   [.env.example](../.env.example) — sensibles como *Secrets*, el resto como
+   *Variables* (dominios, modelos, proyecto de Jira…). Incluye el bloque
+   `COOLIFY_*` (token de API, proyecto, servidor y GitHub App de Coolify).
+   `COOLIFY_API_URL` debe ser la URL pública del panel (los runners de GitHub
+   tienen que alcanzarla — es la misma que usa la GitHub App para webhooks).
+3. La **GitHub App de Coolify** (Sources) debe tener acceso a este repo.
 
-## 2. Este agente (build desde el repo)
+## Bootstrap (Coolify nuevo o recurso aún no creado)
 
-- **+ New Resource → Docker Compose** desde `infra-tdp/tdp-agente-tareas`
-  (GitHub App, auto-deploy on push, igual que tdp-gestion-app).
-- Variables: ver [.env.example](../.env.example). La BD es un usuario/BD nuevos
-  (`tdp_agente`) en la PostgreSQL gestionada de UpCloud; las migraciones se
-  aplican solas al arrancar.
-- Dominio (campo *Domains for app*), p. ej. `agente.tallerdelpatinete.es`
-  → puerto 3100.
+Actions → **Deploy en Coolify** → *Run workflow* → `action = bootstrap`.
 
-### Webhook de la instancia
+Crea el recurso Docker Compose apuntando a este repo (auto-deploy on push
+activado), sincroniza envs y dominios, lanza el primer deploy y guarda
+`COOLIFY_APP_UUID` como variable del repo.
 
-En Evolution (manager o API), configurar el webhook de la instancia:
+## Día a día
+
+- **Push a la rama de despliegue** → la GitHub App de Coolify reconstruye la
+  imagen y despliega; además el workflow re-sincroniza envs/dominios (por si
+  cambió algún Secret) y fuerza el deploy. Idempotente.
+- **Cambió un Secret** sin tocar código → Actions → *Run workflow* →
+  `action = deploy`.
+
+## Único paso manual restante: la instancia de WhatsApp
+
+Escanear un QR es inherentemente manual, pero es **estado en BD**, no
+configuración de Coolify (sobrevive a recreaciones):
+
+1. Entrar al manager de Evolution: `https://<EVOLUTION_DOMAIN>/manager`
+   (API key = `EVOLUTION_API_KEY`).
+2. Crear la instancia (`EVOLUTION_INSTANCE`, por defecto `tdp-tareas`) y
+   escanear el QR con el número dedicado al agente (metido en los grupos que
+   va a observar).
+3. Configurar el webhook de la instancia:
 
 ```
-URL:      https://agente.tallerdelpatinete.es/webhook/evolution
+URL:      https://<AGENT_DOMAIN>/webhook/evolution
 Eventos:  MESSAGES_UPSERT
 Headers:  x-agent-token: <AGENT_WEBHOOK_TOKEN>
 ```
 
-Alternativa sin headers: `.../webhook/evolution?token=<AGENT_WEBHOOK_TOKEN>`.
+(Alternativa sin headers: `.../webhook/evolution?token=<AGENT_WEBHOOK_TOKEN>`.)
 
-## 3. TDP Gestión (módulo Agente WhatsApp)
+## Conexión con TDP Gestión
 
-En el recurso de `tdp-gestion-app` añadir:
+En los Secrets de `tdp-gestion-app` (mismo mecanismo de despliegue):
 
 ```
-TASK_AGENT_URL=http://<servicio-del-agente>:3100    # o el dominio público
+TASK_AGENT_URL=https://<AGENT_DOMAIN>     # o http://agente:3100 si comparten red
 TASK_AGENT_TOKEN=<AGENT_ADMIN_TOKEN>
 ```
 
-Si ambos recursos comparten la red `coolify`, `TASK_AGENT_URL` puede apuntar al
-nombre interno del servicio (sin salir a internet).
+Después, desde el módulo **/agente** del panel: sincronizar chats → monitorizar
+los grupos → mapear personas a Jira → validar en modo shadow → activar.
 
-## Arranque funcional (desde TDP Gestión → Agente WhatsApp)
+## N8N (opcional, fase 4)
 
-1. **Sincronizar chats** — trae los grupos/chats de la instancia.
-2. **Monitorizar** el/los grupos de trabajo (p. ej. el grupo donde Raúl asigna
-   tareas) y, si procede, permitir respuestas por chat.
-3. **Mapear personas** — a cada participante su `accountId` de Jira (el panel
-   ofrece el buscador de usuarios asignables del proyecto).
-4. Dejarlo unos días en **modo shadow** revisando la auditoría (qué habría
-   hecho) y, cuando el criterio convenza, pasar a **modo activo**.
+Variable `COMPOSE_PROFILES=n8n` + bloque `N8N_*` de `.env.example` (dominio,
+encryption key fija y BD propia). El agente ya sabe notificar sus acciones a un
+flujo con `N8N_EVENTS_WEBHOOK_URL`.
 
 ## Jira
 
-- Un proyecto (p. ej. `TDP`) y un usuario/bot con API token
-  (id.atlassian.com → Security → API tokens).
-- El agente usa: búsqueda JQL, creación, edición, comentarios y transiciones.
-  Con el flujo estándar de Jira (To Do / In Progress / Done) no hay que
-  configurar nada más.
+Un proyecto (p. ej. `TDP`) y un usuario/bot con API token
+(id.atlassian.com → Security → API tokens). El agente usa búsqueda JQL,
+creación, edición, comentarios y transiciones — con el flujo estándar
+To Do / In Progress / Done no hay nada más que configurar.

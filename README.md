@@ -71,7 +71,14 @@ npm run dev                     # http://localhost:3100/health
 
 ## Puesta en producción
 
-Ver [`docs/despliegue.md`](docs/despliegue.md): recursos de Coolify (Evolution
-API + este agente), creación de la instancia de WhatsApp, configuración del
-webhook y variables de entorno. La conexión con el panel se explica en
+**Coolify es efímero**: el stack completo (agente + Evolution API + Redis, y
+n8n opcional) está definido en `docker-compose.yaml`, las variables viven como
+Secrets/Variables del repo en GitHub y el workflow
+`.github/workflows/deploy.yml` crea el recurso en Coolify por API, sincroniza
+envs y dominios y despliega — sin tocar la UI de Coolify. Si el Coolify se
+pierde, se reconstruye con *Run workflow → bootstrap*.
+
+Ver [`docs/despliegue.md`](docs/despliegue.md). El único paso manual es
+escanear el QR de la instancia de WhatsApp (estado que persiste en la BD
+gestionada, no en Coolify). La conexión con el panel se explica en
 `docs/agente-tareas.md` de `tdp-gestion-app`.
