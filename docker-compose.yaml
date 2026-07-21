@@ -1,0 +1,82 @@
+# =============================================================================
+#  TDP Agente de tareas en Coolify — build desde este repo en cada push.
+#
+#  En Coolify: + New Resource → Docker Compose desde este repo (GitHub App).
+#  Variables por Environment/Shared Variables (ver .env.example). El servicio
+#  expone :3100 y se une a la red 'coolify' (Traefik enruta según el dominio
+#  fijado en la UI). Evolution API y N8N se despliegan como recursos propios
+#  de Coolify (imágenes oficiales) — este compose solo levanta el agente.
+#
+#  BD: PostgreSQL gestionada de UpCloud (DATABASE_URL). El servicio 'db' es
+#  solo para desarrollo local: docker compose --profile local-db up
+# =============================================================================
+services:
+  agente:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "${DATABASE_URL}"
+      DATABASE_CA_CERT: "${DATABASE_CA_CERT:-}"
+      EVOLUTION_API_URL: "${EVOLUTION_API_URL}"
+      EVOLUTION_API_KEY: "${EVOLUTION_API_KEY}"
+      EVOLUTION_INSTANCE: "${EVOLUTION_INSTANCE}"
+      AGENT_WEBHOOK_TOKEN: "${AGENT_WEBHOOK_TOKEN}"
+      AGENT_ADMIN_TOKEN: "${AGENT_ADMIN_TOKEN}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+      ANTHROPIC_MODEL: "${ANTHROPIC_MODEL:-claude-sonnet-5}"
+      ANTHROPIC_MEDIA_MODEL: "${ANTHROPIC_MEDIA_MODEL:-claude-haiku-4-5-20251001}"
+      STT_API_URL: "${STT_API_URL:-https://api.openai.com/v1}"
+      STT_API_KEY: "${STT_API_KEY:-}"
+      STT_MODEL: "${STT_MODEL:-whisper-1}"
+      TASK_PROVIDER: "${TASK_PROVIDER:-jira}"
+      JIRA_BASE_URL: "${JIRA_BASE_URL}"
+      JIRA_EMAIL: "${JIRA_EMAIL}"
+      JIRA_API_TOKEN: "${JIRA_API_TOKEN}"
+      JIRA_PROJECT_KEY: "${JIRA_PROJECT_KEY}"
+      JIRA_ISSUE_TYPE: "${JIRA_ISSUE_TYPE:-Task}"
+      N8N_EVENTS_WEBHOOK_URL: "${N8N_EVENTS_WEBHOOK_URL:-}"
+    volumes:
+      - agente_data:/data
+    expose:
+      - "3100"
+    networks:
+      - app
+      - coolify
+    labels:
+      - "traefik.docker.network=coolify"
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3100/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Solo desarrollo local; en producción la BD es la gestionada de UpCloud.
+  db:
+    profiles: ["local-db"]
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-tdp}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      POSTGRES_DB: "${POSTGRES_DB:-tdp_agente}"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks: [app]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tdp} -d ${POSTGRES_DB:-tdp_agente}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pg_data:
+  agente_data:
+
+networks:
+  app:
+  coolify:
+    external: true
