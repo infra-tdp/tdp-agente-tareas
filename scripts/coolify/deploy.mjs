@@ -143,17 +143,23 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  * "without docker_compose_raw" hasta que el compose esté parseado. Es
  * best-effort: si no lo consigue, avisa y sigue (los dominios se fijan en el
  * siguiente deploy) — nunca aborta el bootstrap.
+ *
+ * Esquema (http/https) configurable con DOMAIN_SCHEME (default https). Detrás de
+ * un Cloudflare Tunnel el TLS lo pone Cloudflare en el edge y el tunnel entra al
+ * :80 de Traefik en plano → usa DOMAIN_SCHEME=http para que Traefik NO fuerce
+ * HTTPS ni pida Let's Encrypt (evita el bucle de redirección).
  */
 async function syncDomains(appUuid) {
+  const scheme = (process.env.DOMAIN_SCHEME || "https").toLowerCase() === "http" ? "http" : "https";
   const domains = [];
   if (process.env.AGENT_DOMAIN) {
-    domains.push({ name: "agente", domain: `https://${process.env.AGENT_DOMAIN}` });
+    domains.push({ name: "agente", domain: `${scheme}://${process.env.AGENT_DOMAIN}` });
   }
   if (process.env.EVOLUTION_DOMAIN) {
-    domains.push({ name: "evolution", domain: `https://${process.env.EVOLUTION_DOMAIN}` });
+    domains.push({ name: "evolution", domain: `${scheme}://${process.env.EVOLUTION_DOMAIN}` });
   }
   if (process.env.N8N_DOMAIN && (process.env.COMPOSE_PROFILES ?? "").includes("n8n")) {
-    domains.push({ name: "n8n", domain: `https://${process.env.N8N_DOMAIN}` });
+    domains.push({ name: "n8n", domain: `${scheme}://${process.env.N8N_DOMAIN}` });
   }
   if (domains.length === 0) return true;
 
