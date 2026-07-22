@@ -99,7 +99,9 @@ jobs:
         id: bootstrap
         run: node scripts/coolify/deploy.mjs bootstrap
       - name: Guardar COOLIFY_APP_UUID como variable del repo
-        if: steps.bootstrap.outputs.app_uuid != ''
+        # always(): si el recurso se creó (hay uuid) pero un paso posterior falló,
+        # persistimos igualmente el uuid para no crear un recurso duplicado al reintentar.
+        if: ${{ always() && steps.bootstrap.outputs.app_uuid != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

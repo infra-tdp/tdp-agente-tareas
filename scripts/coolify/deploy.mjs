@@ -132,7 +132,18 @@ async function syncEnvs(appUuid) {
   console.log(`[deploy] ${count} variables sincronizadas`);
 }
 
-/** Dominios por servicio del compose (equivale al campo Domains de la UI). */
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Dominios por servicio del compose (equivale al campo Domains de la UI).
+ *
+ * Coolify NO acepta docker_compose_domains hasta que ha clonado y parseado el
+ * compose del repo (docker_compose_raw), lo que ocurre durante el primer deploy.
+ * Por eso: se llama DESPUÉS de lanzar un deploy y se reintenta el 422
+ * "without docker_compose_raw" hasta que el compose esté parseado. Es
+ * best-effort: si no lo consigue, avisa y sigue (los dominios se fijan en el
+ * siguiente deploy) — nunca aborta el bootstrap.
+ */
 async function syncDomains(appUuid) {
   const domains = [];
   if (process.env.AGENT_DOMAIN) {
@@ -144,12 +155,34 @@ async function syncDomains(appUuid) {
   if (process.env.N8N_DOMAIN && (process.env.COMPOSE_PROFILES ?? "").includes("n8n")) {
     domains.push({ name: "n8n", domain: `https://${process.env.N8N_DOMAIN}` });
   }
-  if (domains.length === 0) return;
-  await coolify(`/applications/${appUuid}`, {
-    method: "PATCH",
-    body: JSON.stringify({ docker_compose_domains: domains }),
-  });
-  console.log(`[deploy] Dominios: ${domains.map((d) => `${d.name}→${d.domain}`).join(", ")}`);
+  if (domains.length === 0) return true;
+
+  const maxAttempts = 15;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await coolify(`/applications/${appUuid}`, {
+        method: "PATCH",
+        body: JSON.stringify({ docker_compose_domains: domains }),
+      });
+      console.log(`[deploy] Dominios: ${domains.map((d) => `${d.name}→${d.domain}`).join(", ")}`);
+      return true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // El compose aún no está parseado: reintentar.
+      if (msg.includes("docker_compose_raw") || msg.includes("422")) {
+        console.log(`[deploy] Compose aún no parseado (intento ${attempt}/${maxAttempts}); reintento en 8s…`);
+        await sleep(8000);
+        continue;
+      }
+      // Otro error: no bloquear el bootstrap por los dominios.
+      console.log(`[deploy] Aviso: no se pudieron fijar los dominios: ${msg}`);
+      return false;
+    }
+  }
+  console.log(
+    "[deploy] Aviso: Coolify no parseó el compose a tiempo; los dominios se fijarán en el próximo deploy (vuelve a lanzar el workflow con action=deploy).",
+  );
+  return false;
 }
 
 async function bootstrap() {
@@ -187,6 +220,9 @@ async function bootstrap() {
   console.log(`[deploy] Recurso creado: ${uuid}`);
   console.log(`[deploy] Guarda COOLIFY_APP_UUID=${uuid} como variable del repo en GitHub.`);
 
+  // Guardamos el uuid CUANTO ANTES (antes de deploy/dominios): así, aunque algo
+  // posterior falle, el workflow puede persistir COOLIFY_APP_UUID y no se crea
+  // un recurso duplicado al reintentar.
   if (process.env.GITHUB_OUTPUT) {
     const { appendFileSync } = await import("node:fs");
     appendFileSync(process.env.GITHUB_OUTPUT, `app_uuid=${uuid}\n`);
@@ -194,14 +230,26 @@ async function bootstrap() {
 
   process.env.COOLIFY_APP_UUID = uuid;
   await syncEnvs(uuid);
-  await syncDomains(uuid);
+
+  // 1º deploy: clona el repo y parsea el compose (habilita docker_compose_domains).
   await coolify(`/deploy?uuid=${uuid}&force=true`, { method: "POST" });
-  console.log("[deploy] Deploy inicial lanzado");
+  console.log("[deploy] Deploy inicial lanzado (Coolify está parseando el compose)…");
+  await sleep(10000);
+
+  // Dominios (reintenta hasta que el compose esté parseado) y, si se fijan,
+  // redeploy para que Traefik los enrute.
+  const domainsSet = await syncDomains(uuid);
+  if (domainsSet) {
+    await coolify(`/deploy?uuid=${uuid}&force=true`, { method: "POST" });
+    console.log("[deploy] Redeploy con dominios lanzado");
+  }
 }
 
 async function deploy() {
   const uuid = required("COOLIFY_APP_UUID");
   await syncEnvs(uuid);
+  // El compose ya está parseado de deploys anteriores → los dominios entran a la
+  // primera; aun así es best-effort (no aborta si Coolify lo rechaza).
   await syncDomains(uuid);
   await coolify(`/deploy?uuid=${uuid}&force=true`, { method: "POST" });
   console.log("[deploy] Deploy lanzado");
