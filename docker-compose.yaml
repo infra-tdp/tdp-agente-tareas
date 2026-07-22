@@ -35,11 +35,16 @@ services:
       STT_API_KEY: "${STT_API_KEY:-}"
       STT_MODEL: "${STT_MODEL:-whisper-1}"
       TASK_PROVIDER: "${TASK_PROVIDER:-jira}"
-      JIRA_BASE_URL: "${JIRA_BASE_URL}"
-      JIRA_EMAIL: "${JIRA_EMAIL}"
-      JIRA_API_TOKEN: "${JIRA_API_TOKEN}"
-      JIRA_PROJECT_KEY: "${JIRA_PROJECT_KEY}"
+      # Jira (si TASK_PROVIDER=jira)
+      JIRA_BASE_URL: "${JIRA_BASE_URL:-}"
+      JIRA_EMAIL: "${JIRA_EMAIL:-}"
+      JIRA_API_TOKEN: "${JIRA_API_TOKEN:-}"
+      JIRA_PROJECT_KEY: "${JIRA_PROJECT_KEY:-}"
       JIRA_ISSUE_TYPE: "${JIRA_ISSUE_TYPE:-Task}"
+      # Linear (si TASK_PROVIDER=linear)
+      LINEAR_API_URL: "${LINEAR_API_URL:-https://api.linear.app/graphql}"
+      LINEAR_API_KEY: "${LINEAR_API_KEY:-}"
+      LINEAR_TEAM_KEY: "${LINEAR_TEAM_KEY:-}"
       N8N_EVENTS_WEBHOOK_URL: "${N8N_EVENTS_WEBHOOK_URL:-}"
     volumes:
       - agente_data:/data

@@ -3,9 +3,9 @@
 Agente de IA de **Taller del Patinete** conectado a un número de WhatsApp
 mediante **Evolution API**. Observa los grupos/chats que se le indiquen, lee los
 mensajes (texto, **notas de voz** y **vídeos/imágenes**), entiende qué tareas se
-están pidiendo y mantiene al día el gestor externo (**Jira**): crea tickets,
-comenta novedades, cambia prioridades, reasigna y cierra — **sin duplicar
-tickets**.
+están pidiendo y mantiene al día el gestor externo (**Jira** o **Linear**,
+seleccionable con `TASK_PROVIDER`): crea tickets, comenta novedades, cambia
+prioridades, reasigna y cierra — **sin duplicar tickets**.
 
 > Este repo contiene SOLO el servicio desplegable (infra). Toda la
 > administración — qué chats se monitorizan, mapeo de personas a Jira, modo de
