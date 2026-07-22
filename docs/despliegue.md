@@ -79,9 +79,25 @@ Variable `COMPOSE_PROFILES=n8n` + bloque `N8N_*` de `.env.example` (dominio,
 encryption key fija y BD propia). El agente ya sabe notificar sus acciones a un
 flujo con `N8N_EVENTS_WEBHOOK_URL`.
 
-## Jira
+## Gestor de tareas (`TASK_PROVIDER`)
 
-Un proyecto (p. ej. `TDP`) y un usuario/bot con API token
-(id.atlassian.com → Security → API tokens). El agente usa búsqueda JQL,
-creación, edición, comentarios y transiciones — con el flujo estándar
-To Do / In Progress / Done no hay nada más que configurar.
+Elige `jira` o `linear` y define solo las variables de ese proveedor.
+
+### Linear (recomendado, más simple)
+
+1. **Personal API key**: Linear → Settings → Security & access → Personal API
+   keys → *Create key* (empieza por `lin_api_`). Va en el Secret `LINEAR_API_KEY`.
+2. **Team key**: la clave del equipo donde caen los issues (p. ej. `TDP`), visible
+   en Settings → Teams. Va en la Variable `LINEAR_TEAM_KEY`.
+3. `TASK_PROVIDER=linear`.
+
+El agente usa la API GraphQL: búsqueda, creación, edición, comentarios,
+prioridad (0-4) y cambio de estado (workflow states del equipo). Todo en
+Markdown, sin claves de proyecto raras ni ADF.
+
+### Jira Cloud
+
+Un proyecto (su **KEY**, p. ej. `SCRUM`, se ve en la URL del tablero) y un
+usuario/bot con API token (id.atlassian.com → Security → API tokens). Variables:
+`JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `JIRA_PROJECT_KEY`. Con el flujo
+estándar To Do / In Progress / Done no hay nada más que configurar.

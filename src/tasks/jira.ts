@@ -17,6 +17,21 @@ const log = logger("jira");
  * convertido a párrafos.
  */
 
+/** Config de Jira validada (los campos son opcionales en el esquema global). */
+function jc() {
+  const c = loadConfig();
+  if (!c.JIRA_BASE_URL || !c.JIRA_EMAIL || !c.JIRA_API_TOKEN || !c.JIRA_PROJECT_KEY) {
+    throw new Error("Configuración de Jira incompleta (JIRA_BASE_URL/EMAIL/API_TOKEN/PROJECT_KEY).");
+  }
+  return {
+    baseUrl: c.JIRA_BASE_URL,
+    email: c.JIRA_EMAIL,
+    token: c.JIRA_API_TOKEN,
+    projectKey: c.JIRA_PROJECT_KEY,
+    issueType: c.JIRA_ISSUE_TYPE,
+  };
+}
+
 type AdfDoc = { type: "doc"; version: 1; content: unknown[] };
 
 function textToAdf(text: string): AdfDoc {
@@ -45,13 +60,12 @@ function adfToText(node: unknown): string {
 }
 
 function authHeader(): string {
-  const cfg = loadConfig();
-  return "Basic " + Buffer.from(`${cfg.JIRA_EMAIL}:${cfg.JIRA_API_TOKEN}`).toString("base64");
+  const c = jc();
+  return "Basic " + Buffer.from(`${c.email}:${c.token}`).toString("base64");
 }
 
 async function jiraFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const cfg = loadConfig();
-  const res = await fetch(`${cfg.JIRA_BASE_URL.replace(/\/$/, "")}${path}`, {
+  const res = await fetch(`${jc().baseUrl.replace(/\/$/, "")}${path}`, {
     ...init,
     headers: {
       Authorization: authHeader(),
@@ -83,7 +97,7 @@ type JiraIssueFields = {
 };
 
 function issueUrl(key: string): string {
-  return `${loadConfig().JIRA_BASE_URL.replace(/\/$/, "")}/browse/${key}`;
+  return `${jc().baseUrl.replace(/\/$/, "")}/browse/${key}`;
 }
 
 function toSummary(issue: { key: string; fields?: JiraIssueFields }): TaskSummary {
@@ -106,10 +120,12 @@ function jqlQuote(text: string): string {
 
 export const jiraProvider: TaskProvider = {
   name: "jira",
+  get projectLabel() {
+    return loadConfig().JIRA_PROJECT_KEY ?? "";
+  },
 
   async searchTasks(text, opts) {
-    const cfg = loadConfig();
-    const project = `project = ${jqlQuote(cfg.JIRA_PROJECT_KEY)}`;
+    const project = `project = ${jqlQuote(jc().projectKey)}`;
     let jql: string;
     if (opts?.nativeQuery) {
       // La query nativa SIEMPRE se acota al proyecto configurado.
@@ -154,10 +170,10 @@ export const jiraProvider: TaskProvider = {
   },
 
   async createTask(input) {
-    const cfg = loadConfig();
+    const c = jc();
     const fields: Record<string, unknown> = {
-      project: { key: cfg.JIRA_PROJECT_KEY },
-      issuetype: { name: cfg.JIRA_ISSUE_TYPE },
+      project: { key: c.projectKey },
+      issuetype: { name: c.issueType },
       summary: input.summary,
       description: textToAdf(input.description),
     };
@@ -219,11 +235,10 @@ export const jiraProvider: TaskProvider = {
   },
 
   async listAssignableUsers(query) {
-    const cfg = loadConfig();
     const data = await jiraFetch<
       { accountId: string; displayName: string; emailAddress?: string }[]
     >(
-      `/rest/api/3/user/assignable/search?project=${encodeURIComponent(cfg.JIRA_PROJECT_KEY)}&query=${encodeURIComponent(query)}&maxResults=20`,
+      `/rest/api/3/user/assignable/search?project=${encodeURIComponent(jc().projectKey)}&query=${encodeURIComponent(query)}&maxResults=20`,
     );
     return (data ?? []).map(
       (u): AssignableUser => ({
@@ -235,10 +250,10 @@ export const jiraProvider: TaskProvider = {
   },
 
   async healthcheck() {
-    const cfg = loadConfig();
     try {
-      await jiraFetch(`/rest/api/3/project/${encodeURIComponent(cfg.JIRA_PROJECT_KEY)}`);
-      return { ok: true, detail: `Proyecto ${cfg.JIRA_PROJECT_KEY} accesible` };
+      const projectKey = jc().projectKey;
+      await jiraFetch(`/rest/api/3/project/${encodeURIComponent(projectKey)}`);
+      return { ok: true, detail: `Proyecto ${projectKey} accesible` };
     } catch (err) {
       return { ok: false, detail: err instanceof Error ? err.message : String(err) };
     }

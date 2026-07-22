@@ -62,7 +62,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
 
     return {
       instance: { name: cfg.EVOLUTION_INSTANCE, state: instanceState },
-      provider: { name: cfg.TASK_PROVIDER, projectKey: cfg.JIRA_PROJECT_KEY, ...providerHealth },
+      provider: { name: cfg.TASK_PROVIDER, projectKey: getTaskProvider().projectLabel, ...providerHealth },
       stt: { configured: Boolean(cfg.STT_API_KEY), model: cfg.STT_MODEL },
       model: cfg.ANTHROPIC_MODEL,
       stats,

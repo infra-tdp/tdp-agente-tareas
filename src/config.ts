@@ -35,19 +35,42 @@ const EnvSchema = z.object({
   STT_API_KEY: z.string().optional(),
   STT_MODEL: z.string().default("whisper-1"),
 
-  /** Proveedor de tareas. De momento: jira (interfaz preparada para más). */
-  TASK_PROVIDER: z.enum(["jira"]).default("jira"),
-  JIRA_BASE_URL: z.string().url("JIRA_BASE_URL debe ser una URL (https://xxx.atlassian.net)"),
-  JIRA_EMAIL: z.string().min(1, "Falta JIRA_EMAIL"),
-  JIRA_API_TOKEN: z.string().min(1, "Falta JIRA_API_TOKEN"),
-  JIRA_PROJECT_KEY: z.string().min(1, "Falta JIRA_PROJECT_KEY"),
+  /**
+   * Proveedor de tareas. Cada uno solo exige SUS variables (ver superRefine).
+   *  - jira:   JIRA_BASE_URL / JIRA_EMAIL / JIRA_API_TOKEN / JIRA_PROJECT_KEY
+   *  - linear: LINEAR_API_KEY / LINEAR_TEAM_KEY
+   */
+  TASK_PROVIDER: z.enum(["jira", "linear"]).default("jira"),
+
+  // --- Jira Cloud ---
+  JIRA_BASE_URL: z.string().url("JIRA_BASE_URL debe ser una URL (https://xxx.atlassian.net)").optional(),
+  JIRA_EMAIL: z.string().optional(),
+  JIRA_API_TOKEN: z.string().optional(),
+  JIRA_PROJECT_KEY: z.string().optional(),
   JIRA_ISSUE_TYPE: z.string().default("Task"),
+
+  // --- Linear ---
+  LINEAR_API_URL: z.string().url().default("https://api.linear.app/graphql"),
+  /** Personal API key (Settings → Security & access → Personal API keys). */
+  LINEAR_API_KEY: z.string().optional(),
+  /** Clave del equipo donde crear los issues (p. ej. "TDP"); se ve en la URL/ajustes del team. */
+  LINEAR_TEAM_KEY: z.string().optional(),
 
   /** Opcional: webhook de N8N al que se notifican las acciones del agente (fase 4 del roadmap). */
   N8N_EVENTS_WEBHOOK_URL: z.string().url().optional(),
 
   /** Directorio de trabajo para media temporal (frames/audio de vídeos). */
   DATA_DIR: z.string().default("/data"),
+}).superRefine((val, ctx) => {
+  if (val.TASK_PROVIDER === "jira") {
+    if (!val.JIRA_BASE_URL) ctx.addIssue({ code: "custom", path: ["JIRA_BASE_URL"], message: "obligatorio con TASK_PROVIDER=jira" });
+    if (!val.JIRA_EMAIL) ctx.addIssue({ code: "custom", path: ["JIRA_EMAIL"], message: "obligatorio con TASK_PROVIDER=jira" });
+    if (!val.JIRA_API_TOKEN) ctx.addIssue({ code: "custom", path: ["JIRA_API_TOKEN"], message: "obligatorio con TASK_PROVIDER=jira" });
+    if (!val.JIRA_PROJECT_KEY) ctx.addIssue({ code: "custom", path: ["JIRA_PROJECT_KEY"], message: "obligatorio con TASK_PROVIDER=jira" });
+  } else if (val.TASK_PROVIDER === "linear") {
+    if (!val.LINEAR_API_KEY) ctx.addIssue({ code: "custom", path: ["LINEAR_API_KEY"], message: "obligatorio con TASK_PROVIDER=linear" });
+    if (!val.LINEAR_TEAM_KEY) ctx.addIssue({ code: "custom", path: ["LINEAR_TEAM_KEY"], message: "obligatorio con TASK_PROVIDER=linear" });
+  }
 });
 
 export type Env = z.infer<typeof EnvSchema>;

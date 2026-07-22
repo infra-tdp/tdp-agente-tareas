@@ -39,6 +39,8 @@ export type AssignableUser = { accountId: string; displayName: string; email: st
 
 export interface TaskProvider {
   readonly name: string;
+  /** Etiqueta del contenedor de tickets para la UI (proyecto en Jira, equipo en Linear). */
+  readonly projectLabel: string;
   /** Búsqueda por texto libre (y opcionalmente query nativa del proveedor). */
   searchTasks(text: string, opts?: { nativeQuery?: string; includeDone?: boolean }): Promise<TaskSummary[]>;
   getTask(key: string): Promise<TaskDetail>;

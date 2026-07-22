@@ -8,6 +8,7 @@ import { processMessageMedia } from "../media/process.js";
 import { buildSystemPrompt } from "./prompts.js";
 import { buildUserContext } from "./context.js";
 import { TOOL_DEFINITIONS, ToolExecutor } from "./tools.js";
+import { getTaskProvider } from "../tasks/index.js";
 
 const log = logger("agent");
 
@@ -71,7 +72,7 @@ export async function runAgentForChat(chatId: number): Promise<void> {
     const system = buildSystemPrompt({
       settings,
       providerName: cfg.TASK_PROVIDER,
-      projectKey: cfg.JIRA_PROJECT_KEY,
+      projectKey: getTaskProvider().projectLabel,
       chatName: chat.name || chat.jid,
       chatNotes: chat.notes,
       canReply: settings.repliesEnabled && chat.allowReplies,
