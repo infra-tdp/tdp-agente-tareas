@@ -54,9 +54,25 @@ export type Env = z.infer<typeof EnvSchema>;
 
 let cached: Env | null = null;
 
+/**
+ * Normaliza el entorno antes de validar: trata como "no definido" los valores
+ * vacíos y los que llegan como comillas literales (`''` / `""`). Coolify vuelca
+ * las variables sin valor del compose como cadena vacía o `''`, y sin esto una
+ * opcional-URL vacía (p. ej. N8N_EVENTS_WEBHOOK_URL) rompería el arranque.
+ */
+function sanitizeEnv(env: NodeJS.ProcessEnv): Record<string, string | undefined> {
+  const out: Record<string, string | undefined> = { ...env };
+  for (const [key, value] of Object.entries(out)) {
+    if (value === undefined) continue;
+    const trimmed = value.trim();
+    if (trimmed === "" || trimmed === "''" || trimmed === '""') out[key] = undefined;
+  }
+  return out;
+}
+
 export function loadConfig(): Env {
   if (cached) return cached;
-  const parsed = EnvSchema.safeParse(process.env);
+  const parsed = EnvSchema.safeParse(sanitizeEnv(process.env));
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `  - ${i.path.join(".")}: ${i.message}`).join("\n");
     throw new Error(`Configuración inválida:\n${issues}`);
