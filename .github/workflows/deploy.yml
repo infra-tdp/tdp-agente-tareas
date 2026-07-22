@@ -33,38 +33,42 @@ concurrency:
   group: coolify-deploy
   cancel-in-progress: false
 
+# Cada valor se toma de Secrets O de Variables indistintamente
+# (secrets.X || vars.X): así da igual dónde lo hayas guardado. La URL y los
+# UUIDs de Coolify no son sensibles y funcionan bien como Variables visibles;
+# las claves y contraseñas deberían ir en Secrets.
 env:
   # --- Coolify (API) ---
-  COOLIFY_API_URL: ${{ secrets.COOLIFY_API_URL }}
-  COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
-  COOLIFY_PROJECT_UUID: ${{ secrets.COOLIFY_PROJECT_UUID }}
-  COOLIFY_SERVER_UUID: ${{ secrets.COOLIFY_SERVER_UUID }}
-  COOLIFY_GITHUB_APP_UUID: ${{ secrets.COOLIFY_GITHUB_APP_UUID }}
+  COOLIFY_API_URL: ${{ secrets.COOLIFY_API_URL || vars.COOLIFY_API_URL }}
+  COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN || vars.COOLIFY_TOKEN }}
+  COOLIFY_PROJECT_UUID: ${{ secrets.COOLIFY_PROJECT_UUID || vars.COOLIFY_PROJECT_UUID }}
+  COOLIFY_SERVER_UUID: ${{ secrets.COOLIFY_SERVER_UUID || vars.COOLIFY_SERVER_UUID }}
+  COOLIFY_GITHUB_APP_UUID: ${{ secrets.COOLIFY_GITHUB_APP_UUID || vars.COOLIFY_GITHUB_APP_UUID }}
   COOLIFY_ENVIRONMENT_NAME: ${{ vars.COOLIFY_ENVIRONMENT_NAME }}
   COOLIFY_APP_UUID: ${{ vars.COOLIFY_APP_UUID }}
   DEPLOY_BRANCH: ${{ vars.DEPLOY_BRANCH }}
   # --- Agente ---
-  DATABASE_URL: ${{ secrets.DATABASE_URL }}
-  DATABASE_CA_CERT: ${{ secrets.DATABASE_CA_CERT }}
-  AGENT_WEBHOOK_TOKEN: ${{ secrets.AGENT_WEBHOOK_TOKEN }}
-  AGENT_ADMIN_TOKEN: ${{ secrets.AGENT_ADMIN_TOKEN }}
-  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  DATABASE_URL: ${{ secrets.DATABASE_URL || vars.DATABASE_URL }}
+  DATABASE_CA_CERT: ${{ secrets.DATABASE_CA_CERT || vars.DATABASE_CA_CERT }}
+  AGENT_WEBHOOK_TOKEN: ${{ secrets.AGENT_WEBHOOK_TOKEN || vars.AGENT_WEBHOOK_TOKEN }}
+  AGENT_ADMIN_TOKEN: ${{ secrets.AGENT_ADMIN_TOKEN || vars.AGENT_ADMIN_TOKEN }}
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || vars.ANTHROPIC_API_KEY }}
   ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
   ANTHROPIC_MEDIA_MODEL: ${{ vars.ANTHROPIC_MEDIA_MODEL }}
   STT_API_URL: ${{ vars.STT_API_URL }}
-  STT_API_KEY: ${{ secrets.STT_API_KEY }}
+  STT_API_KEY: ${{ secrets.STT_API_KEY || vars.STT_API_KEY }}
   STT_MODEL: ${{ vars.STT_MODEL }}
   TASK_PROVIDER: ${{ vars.TASK_PROVIDER }}
   JIRA_BASE_URL: ${{ vars.JIRA_BASE_URL }}
   JIRA_EMAIL: ${{ vars.JIRA_EMAIL }}
-  JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+  JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN || vars.JIRA_API_TOKEN }}
   JIRA_PROJECT_KEY: ${{ vars.JIRA_PROJECT_KEY }}
   JIRA_ISSUE_TYPE: ${{ vars.JIRA_ISSUE_TYPE }}
-  N8N_EVENTS_WEBHOOK_URL: ${{ secrets.N8N_EVENTS_WEBHOOK_URL }}
+  N8N_EVENTS_WEBHOOK_URL: ${{ secrets.N8N_EVENTS_WEBHOOK_URL || vars.N8N_EVENTS_WEBHOOK_URL }}
   # --- Evolution API ---
-  EVOLUTION_API_KEY: ${{ secrets.EVOLUTION_API_KEY }}
+  EVOLUTION_API_KEY: ${{ secrets.EVOLUTION_API_KEY || vars.EVOLUTION_API_KEY }}
   EVOLUTION_INSTANCE: ${{ vars.EVOLUTION_INSTANCE }}
-  EVOLUTION_DATABASE_URL: ${{ secrets.EVOLUTION_DATABASE_URL }}
+  EVOLUTION_DATABASE_URL: ${{ secrets.EVOLUTION_DATABASE_URL || vars.EVOLUTION_DATABASE_URL }}
   EVOLUTION_DOMAIN: ${{ vars.EVOLUTION_DOMAIN }}
   EVOLUTION_IMAGE: ${{ vars.EVOLUTION_IMAGE }}
   CONFIG_SESSION_PHONE_CLIENT: ${{ vars.CONFIG_SESSION_PHONE_CLIENT }}
@@ -75,12 +79,12 @@ env:
   # --- N8N (perfil opcional) ---
   N8N_IMAGE: ${{ vars.N8N_IMAGE }}
   N8N_DOMAIN: ${{ vars.N8N_DOMAIN }}
-  N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY }}
+  N8N_ENCRYPTION_KEY: ${{ secrets.N8N_ENCRYPTION_KEY || vars.N8N_ENCRYPTION_KEY }}
   N8N_DB_NAME: ${{ vars.N8N_DB_NAME }}
   N8N_DB_HOST: ${{ vars.N8N_DB_HOST }}
   N8N_DB_PORT: ${{ vars.N8N_DB_PORT }}
   N8N_DB_USER: ${{ vars.N8N_DB_USER }}
-  N8N_DB_PASSWORD: ${{ secrets.N8N_DB_PASSWORD }}
+  N8N_DB_PASSWORD: ${{ secrets.N8N_DB_PASSWORD || vars.N8N_DB_PASSWORD }}
   N8N_DB_SSL: ${{ vars.N8N_DB_SSL }}
 
 jobs:
