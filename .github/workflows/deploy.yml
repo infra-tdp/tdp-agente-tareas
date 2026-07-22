@@ -75,6 +75,8 @@ env:
   EVOLUTION_LOG_LEVEL: ${{ vars.EVOLUTION_LOG_LEVEL }}
   # --- Dominios / perfiles ---
   AGENT_DOMAIN: ${{ vars.AGENT_DOMAIN }}
+  # http detrás de Cloudflare Tunnel (TLS en el edge); https si expones directo con Let's Encrypt.
+  DOMAIN_SCHEME: ${{ vars.DOMAIN_SCHEME }}
   COMPOSE_PROFILES: ${{ vars.COMPOSE_PROFILES }}
   # --- N8N (perfil opcional) ---
   N8N_IMAGE: ${{ vars.N8N_IMAGE }}
