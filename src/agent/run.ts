@@ -51,7 +51,11 @@ export async function runAgentForChat(chatId: number): Promise<void> {
   }
 
   const shadow = settings.mode === "shadow";
-  const canReply = settings.repliesEnabled && chat.allowReplies && !shadow;
+  // "Se permite responder" según config (global + por chat). El bloqueo real en
+  // shadow lo hace el executor (simula el envío en vez de mandarlo), igual que
+  // con la creación de tickets — así en shadow no salta un error, se registra
+  // "esto respondería".
+  const canReply = settings.repliesEnabled && chat.allowReplies;
 
   const [run] = await db
     .insert(schema.agentRuns)
