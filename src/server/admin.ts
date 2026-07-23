@@ -145,9 +145,13 @@ export function registerAdminRoutes(app: FastifyInstance): void {
   /* --------------------------- Runs y auditoría ---------------------------- */
 
   app.get("/admin/runs", async (request) => {
-    const q = request.query as { chatId?: string; limit?: string };
+    const q = request.query as { chatId?: string; limit?: string; offset?: string };
     const limit = Math.min(Number(q.limit ?? 30) || 30, 100);
-    const base = db
+    const offset = Math.max(0, Number(q.offset ?? 0) || 0);
+    const chatId = Number(q.chatId);
+    const whereChat =
+      Number.isInteger(chatId) && q.chatId ? eq(schema.agentRuns.chatId, chatId) : undefined;
+    return db
       .select({
         id: schema.agentRuns.id,
         chatId: schema.agentRuns.chatId,
@@ -165,12 +169,10 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       })
       .from(schema.agentRuns)
       .innerJoin(schema.chats, eq(schema.agentRuns.chatId, schema.chats.id))
+      .where(whereChat)
       .orderBy(desc(schema.agentRuns.id))
-      .limit(limit);
-    const chatId = Number(q.chatId);
-    return Number.isInteger(chatId) && q.chatId
-      ? base.where(eq(schema.agentRuns.chatId, chatId))
-      : base;
+      .limit(limit)
+      .offset(offset);
   });
 
   app.get("/admin/runs/:id/actions", async (request, reply) => {

@@ -162,28 +162,34 @@ export const linearProvider: TaskProvider = {
   async searchTasks(text, opts) {
     const id = await teamId();
     const term = text.trim();
-    const dropDone = (nodes: LinearIssueNode[]) =>
-      opts?.includeDone
-        ? nodes
-        : nodes.filter((n) => !["completed", "canceled"].includes(n.state?.type ?? ""));
 
-    if (!term) {
-      const data = await gql<{ issues: { nodes: LinearIssueNode[] } }>(
-        `query($id:ID!){
-           issues(filter:{ team:{ id:{ eq:$id } } }, first:20, orderBy:updatedAt){ nodes { ${ISSUE_FIELDS} } }
-         }`,
-        { id },
-      );
-      return dropDone(data.issues.nodes).map(toSummary);
+    // Búsqueda por texto con el query `issues` (el endpoint `issueSearch` está
+    // deprecado). Se tokeniza el término y se pide que el título O la descripción
+    // contengan alguna palabra significativa → buena cobertura para "no dupliques".
+    const filter: Record<string, unknown> = { team: { id: { eq: id } } };
+    if (term) {
+      const words = term
+        .toLowerCase()
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter((w) => w.length >= 4)
+        .slice(0, 8);
+      const needles = words.length ? words : [term];
+      filter.or = needles.flatMap((w) => [
+        { title: { containsIgnoreCase: w } },
+        { description: { containsIgnoreCase: w } },
+      ]);
     }
 
-    const data = await gql<{ issueSearch: { nodes: LinearIssueNode[] } }>(
-      `query($q:String!, $id:ID!){
-         issueSearch(query:$q, first:20, filter:{ team:{ id:{ eq:$id } } }){ nodes { ${ISSUE_FIELDS} } }
+    const data = await gql<{ issues: { nodes: LinearIssueNode[] } }>(
+      `query($filter: IssueFilter!){
+         issues(filter:$filter, first:25, orderBy:updatedAt){ nodes { ${ISSUE_FIELDS} } }
        }`,
-      { q: term, id },
+      { filter },
     );
-    return dropDone(data.issueSearch.nodes).map(toSummary);
+    const nodes = opts?.includeDone
+      ? data.issues.nodes
+      : data.issues.nodes.filter((n) => !["completed", "canceled"].includes(n.state?.type ?? ""));
+    return nodes.map(toSummary);
   },
 
   async getTask(key) {
