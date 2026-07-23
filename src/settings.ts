@@ -48,8 +48,27 @@ export async function getSettings(): Promise<AgentSettings> {
 }
 
 export async function updateSettings(patch: Partial<AgentSettings>): Promise<AgentSettings> {
-  const current = await getSettings();
-  const next = SettingsSchema.parse({ ...current, ...patch });
+  // Fusionar SIEMPRE contra el valor fresco de BD (no la caché en memoria) y
+  // aplicar SOLO las claves realmente definidas del patch. Así, guardar una
+  // sección del panel (p. ej. ajustes) nunca pisa los campos de otra (contexto),
+  // aunque el patch parcial traiga claves undefined.
+  let currentRaw: unknown = {};
+  try {
+    const [row] = await db
+      .select()
+      .from(schema.agentSettings)
+      .where(eq(schema.agentSettings.key, KEY))
+      .limit(1);
+    currentRaw = row?.value ?? {};
+  } catch {
+    /* BD no lista: se parte de defaults */
+  }
+  const current = SettingsSchema.parse(currentRaw);
+  const clean = Object.fromEntries(
+    Object.entries(patch).filter(([, v]) => v !== undefined),
+  ) as Partial<AgentSettings>;
+  const next = SettingsSchema.parse({ ...current, ...clean });
+
   await db
     .insert(schema.agentSettings)
     .values({ key: KEY, value: next })
