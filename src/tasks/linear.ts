@@ -143,7 +143,7 @@ async function fetchIssueByKey(key: string): Promise<LinearIssueNode> {
   if (!Number.isFinite(num)) throw new Error(`Identificador de issue inválido: "${key}".`);
   const id = await teamId();
   const data = await gql<{ issues: { nodes: LinearIssueNode[] } }>(
-    `query($id:String!, $num:Float!){
+    `query($id:ID!, $num:Float!){
        issues(filter:{ team:{ id:{ eq:$id } }, number:{ eq:$num } }, first:1){ nodes { ${ISSUE_FIELDS} } }
      }`,
     { id, num },
@@ -169,7 +169,7 @@ export const linearProvider: TaskProvider = {
 
     if (!term) {
       const data = await gql<{ issues: { nodes: LinearIssueNode[] } }>(
-        `query($id:String!){
+        `query($id:ID!){
            issues(filter:{ team:{ id:{ eq:$id } } }, first:20, orderBy:updatedAt){ nodes { ${ISSUE_FIELDS} } }
          }`,
         { id },
@@ -178,7 +178,7 @@ export const linearProvider: TaskProvider = {
     }
 
     const data = await gql<{ issueSearch: { nodes: LinearIssueNode[] } }>(
-      `query($q:String!, $id:String!){
+      `query($q:String!, $id:ID!){
          issueSearch(query:$q, first:20, filter:{ team:{ id:{ eq:$id } } }){ nodes { ${ISSUE_FIELDS} } }
        }`,
       { q: term, id },
