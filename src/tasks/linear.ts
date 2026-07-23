@@ -113,6 +113,33 @@ async function resolveLabelIds(names: string[]): Promise<string[]> {
   return names.map((n) => byName.get(n.toLowerCase())).filter((v): v is string => Boolean(v));
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Resuelve el asignado a un UUID de usuario de Linear. Acepta un UUID (lo
+ * devuelve tal cual), un email o un nombre (busca el usuario). Devuelve null si
+ * no se puede resolver — el caller decide degradar (crear sin asignar) en vez de
+ * romper. Esto tolera que el mapeo de personas tenga el email en vez del id.
+ */
+async function resolveAssigneeId(value?: string): Promise<string | null> {
+  const v = (value ?? "").trim();
+  if (!v) return null;
+  if (UUID_RE.test(v)) return v;
+  const filter = v.includes("@")
+    ? `email:{ eq:$v }`
+    : `name:{ containsIgnoreCase:$v }`;
+  try {
+    const data = await gql<{ users: { nodes: LinearUser[] } }>(
+      `query($v:String!){ users(filter:{ ${filter} }, first:1){ nodes{ id active } } }`,
+      { v },
+    );
+    return data.users.nodes[0]?.id ?? null;
+  } catch (err) {
+    log.warn(`No se pudo resolver el asignado "${v}"`, err);
+    return null;
+  }
+}
+
 const ISSUE_FIELDS = `
   id identifier title description priority priorityLabel url updatedAt
   state { id name type }
@@ -216,7 +243,11 @@ export const linearProvider: TaskProvider = {
     };
     const prio = priorityToInt(input.priority);
     if (prio !== undefined) issueInput.priority = prio;
-    if (input.assigneeAccountId) issueInput.assigneeId = input.assigneeAccountId;
+    if (input.assigneeAccountId) {
+      const assigneeId = await resolveAssigneeId(input.assigneeAccountId);
+      if (assigneeId) issueInput.assigneeId = assigneeId;
+      else log.warn(`Asignado "${input.assigneeAccountId}" no resuelto; se crea sin asignar.`);
+    }
     if (input.labels?.length) {
       const labelIds = await resolveLabelIds(input.labels);
       if (labelIds.length) issueInput.labelIds = labelIds;
@@ -240,7 +271,14 @@ export const linearProvider: TaskProvider = {
       if (prio !== undefined) update.priority = prio;
     }
     if (patch.assigneeAccountId !== undefined) {
-      update.assigneeId = patch.assigneeAccountId || null;
+      if (!patch.assigneeAccountId) {
+        update.assigneeId = null; // desasignar explícitamente
+      } else {
+        const assigneeId = await resolveAssigneeId(patch.assigneeAccountId);
+        // Si no se resuelve, no tocamos el asignado (mejor que fallar la update).
+        if (assigneeId) update.assigneeId = assigneeId;
+        else log.warn(`Asignado "${patch.assigneeAccountId}" no resuelto; se deja el asignado actual.`);
+      }
     }
     if (patch.labels !== undefined) update.labelIds = await resolveLabelIds(patch.labels);
     if (Object.keys(update).length === 0) return;
