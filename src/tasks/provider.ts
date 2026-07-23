@@ -37,6 +37,9 @@ export type UpdateTaskInput = {
 
 export type AssignableUser = { accountId: string; displayName: string; email: string | null };
 
+/** Archivo a adjuntar a un ticket (imagen/vídeo/documento del chat). */
+export type MediaFile = { filename: string; contentType: string; data: Buffer };
+
 export interface TaskProvider {
   readonly name: string;
   /** Etiqueta del contenedor de tickets para la UI (proyecto en Jira, equipo en Linear). */
@@ -50,6 +53,8 @@ export interface TaskProvider {
   /** Mueve el ticket al estado indicado (nombre aproximado). Devuelve el estado aplicado. */
   transitionTask(key: string, targetStatus: string): Promise<string>;
   listAssignableUsers(query: string): Promise<AssignableUser[]>;
+  /** Sube archivos (imágenes/vídeos/documentos del chat) y los vincula al ticket. */
+  attachMediaToTask(key: string, files: MediaFile[]): Promise<void>;
   /** Comprobación de conectividad/credenciales para /admin/overview. */
   healthcheck(): Promise<{ ok: boolean; detail: string }>;
 }

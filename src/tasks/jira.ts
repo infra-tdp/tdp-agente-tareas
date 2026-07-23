@@ -3,6 +3,7 @@ import { logger } from "../log.js";
 import type {
   AssignableUser,
   CreateTaskInput,
+  MediaFile,
   TaskDetail,
   TaskProvider,
   TaskSummary,
@@ -247,6 +248,25 @@ export const jiraProvider: TaskProvider = {
         email: u.emailAddress ?? null,
       }),
     );
+  },
+
+  async attachMediaToTask(key, files: MediaFile[]) {
+    if (!files.length) return;
+    const c = jc();
+    for (const f of files) {
+      const form = new FormData();
+      form.append("file", new Blob([new Uint8Array(f.data)], { type: f.contentType }), f.filename);
+      const res = await fetch(`${c.baseUrl.replace(/\/$/, "")}/rest/api/3/issue/${encodeURIComponent(key)}/attachments`, {
+        method: "POST",
+        headers: { Authorization: authHeader(), "X-Atlassian-Token": "no-check" },
+        body: form,
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        throw new Error(`Jira adjunto ${f.filename} → HTTP ${res.status}: ${body.slice(0, 300)}`);
+      }
+    }
+    log.info(`${files.length} adjunto(s) subido(s) a ${key}`);
   },
 
   async healthcheck() {

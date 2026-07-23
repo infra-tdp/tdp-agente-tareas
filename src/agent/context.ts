@@ -31,6 +31,11 @@ function renderMessage(msg: Msg, isNew: boolean): string {
   if (msg.text) lines.push(`  ${msg.text}`);
   if (msg.transcript) lines.push(`  ${msg.transcript}`);
   if (!msg.text && !msg.transcript) lines.push(`  [${msg.type} sin contenido de texto]`);
+  // Si trae un archivo descargable (imagen/vídeo/documento), se marca con su id
+  // para que el agente pueda adjuntarlo al ticket con attach_media.
+  if (["imageMessage", "videoMessage", "documentMessage"].includes(msg.type)) {
+    lines.push(`  [adjunto id=${msg.id} · ${msg.type}]`);
+  }
   return lines.join("\n");
 }
 

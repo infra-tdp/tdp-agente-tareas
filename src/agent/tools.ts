@@ -1,10 +1,11 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import { loadConfig } from "../config.js";
 import { logger } from "../log.js";
-import { sendText } from "../evolution/client.js";
+import { getMediaBase64, sendText } from "../evolution/client.js";
 import { getTaskProvider } from "../tasks/index.js";
+import type { MediaFile } from "../tasks/provider.js";
 import type { AgentSettings } from "../settings.js";
 
 const log = logger("tools");
@@ -92,6 +93,23 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
     },
   },
   {
+    name: "attach_media",
+    description:
+      "Sube al ticket los archivos (imágenes, vídeos, documentos) de los mensajes indicados, además de su descripción en texto. Los mensajes con adjunto aparecen en el contexto marcados como [adjunto id=N]. Úsalo cuando la imagen o el vídeo sean evidencia relevante para el ticket.",
+    input_schema: {
+      type: "object",
+      properties: {
+        key: { type: "string", description: "Clave del ticket, p. ej. TAL-6" },
+        media_ids: {
+          type: "array",
+          items: { type: "number" },
+          description: "IDs de los mensajes con adjunto (los [adjunto id=N] del contexto)",
+        },
+      },
+      required: ["key", "media_ids"],
+    },
+  },
+  {
     name: "send_whatsapp_reply",
     description:
       "Envía un mensaje breve al chat de WhatsApp. Solo si las respuestas están permitidas: confirmación corta o UNA pregunta imprescindible.",
@@ -112,7 +130,29 @@ export type ToolContext = {
   settings: AgentSettings;
 };
 
-const WRITE_TOOLS = new Set(["create_task", "update_task", "comment_task", "transition_task", "send_whatsapp_reply"]);
+const WRITE_TOOLS = new Set([
+  "create_task",
+  "update_task",
+  "comment_task",
+  "transition_task",
+  "attach_media",
+  "send_whatsapp_reply",
+]);
+
+const MEDIA_TYPES = new Set(["imageMessage", "videoMessage", "documentMessage"]);
+
+/** Extensión por defecto según el mimetype, para nombrar el fichero subido. */
+function extFor(mimetype: string): string {
+  if (mimetype.includes("jpeg") || mimetype.includes("jpg")) return "jpg";
+  if (mimetype.includes("png")) return "png";
+  if (mimetype.includes("webp")) return "webp";
+  if (mimetype.includes("gif")) return "gif";
+  if (mimetype.includes("mp4")) return "mp4";
+  if (mimetype.includes("quicktime") || mimetype.includes("mov")) return "mov";
+  if (mimetype.includes("pdf")) return "pdf";
+  const guess = mimetype.split("/")[1]?.split(";")[0];
+  return guess && /^[a-z0-9]{1,5}$/i.test(guess) ? guess : "bin";
+}
 
 /** Notificación opcional a N8N de cada acción ejecutada (fase 4 del roadmap). */
 function notifyN8n(payload: Record<string, unknown>): void {
@@ -311,6 +351,41 @@ export class ToolExecutor {
         const applied = await provider.transitionTask(key, target);
         await upsertTaskLink(this.ctx, key, { status: applied }, "transitioned");
         return { result: `Ticket ${key} movido a "${applied}".`, executed: true, taskKey: key };
+      }
+
+      case "attach_media": {
+        const key = String(input.key ?? "");
+        const ids = Array.isArray(input.media_ids)
+          ? (input.media_ids as unknown[]).map(Number).filter((n) => Number.isInteger(n))
+          : [];
+        if (!key || ids.length === 0) throw new Error("key y media_ids son obligatorios.");
+
+        // Solo mensajes de ESTE chat con adjunto descargable.
+        const msgs = await db
+          .select()
+          .from(schema.messages)
+          .where(and(eq(schema.messages.chatId, this.ctx.chatId), inArray(schema.messages.id, ids)));
+
+        const files: MediaFile[] = [];
+        for (const m of msgs) {
+          if (!MEDIA_TYPES.has(m.type)) continue;
+          const media = await getMediaBase64(m.waMessageId);
+          if (!media) {
+            log.warn(`No se pudo descargar el adjunto del mensaje ${m.id}`);
+            continue;
+          }
+          const meta = (m.mediaMeta ?? {}) as { mimetype?: string; fileName?: string };
+          const contentType = meta.mimetype || media.mimetype || "application/octet-stream";
+          const filename = meta.fileName || `adjunto-${m.id}.${extFor(contentType)}`;
+          files.push({ filename, contentType, data: Buffer.from(media.base64, "base64") });
+        }
+        if (files.length === 0) throw new Error("Ninguno de los mensajes indicados tiene un adjunto descargable.");
+
+        if (this.ctx.shadow) {
+          return this.shadowResult(`Se adjuntarían ${files.length} archivo(s) a ${key}`);
+        }
+        await getTaskProvider().attachMediaToTask(key, files);
+        return { result: `${files.length} adjunto(s) subido(s) a ${key}.`, executed: true, taskKey: key };
       }
 
       case "send_whatsapp_reply": {
