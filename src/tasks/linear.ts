@@ -162,6 +162,7 @@ function toSummary(n: LinearIssueNode): TaskSummary {
     assignee: assigneeName(n.assignee),
     updatedAt: n.updatedAt ?? null,
     url: n.url,
+    done: ["completed", "canceled"].includes(n.state?.type ?? ""),
   };
 }
 
@@ -218,6 +219,21 @@ export const linearProvider: TaskProvider = {
       ? data.issues.nodes
       : data.issues.nodes.filter((n) => !["completed", "canceled"].includes(n.state?.type ?? ""));
     return nodes.map(toSummary);
+  },
+
+  async getTasksByKeys(keys) {
+    const nums = keys
+      .map((k) => Number(k.split("-").pop()))
+      .filter((n) => Number.isFinite(n));
+    if (nums.length === 0) return [];
+    const id = await teamId();
+    const data = await gql<{ issues: { nodes: LinearIssueNode[] } }>(
+      `query($id:ID!, $nums:[Float!]!){
+         issues(filter:{ team:{ id:{ eq:$id } }, number:{ in:$nums } }, first:250){ nodes { ${ISSUE_FIELDS} } }
+       }`,
+      { id, nums },
+    );
+    return data.issues.nodes.map(toSummary);
   },
 
   async getTask(key) {

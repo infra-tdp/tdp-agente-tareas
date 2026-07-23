@@ -7,6 +7,7 @@ import { loadConfig } from "../config.js";
 import { getSettings, updateSettings, SettingsSchema } from "../settings.js";
 import { connectionState } from "../evolution/client.js";
 import { getTaskProvider } from "../tasks/index.js";
+import { refreshLinks } from "../tasks/live.js";
 import { ingestStats, syncChatsFromEvolution } from "../ingest.js";
 import { forceRun } from "../agent/batcher.js";
 
@@ -195,25 +196,38 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       .limit(limit);
   });
 
-  app.get("/admin/tasks", async () => {
-    return db
-      .select({
-        id: schema.taskLinks.id,
-        chatId: schema.taskLinks.chatId,
-        provider: schema.taskLinks.provider,
-        taskKey: schema.taskLinks.taskKey,
-        summary: schema.taskLinks.summary,
-        status: schema.taskLinks.status,
-        priority: schema.taskLinks.priority,
-        assignee: schema.taskLinks.assignee,
-        lastAction: schema.taskLinks.lastAction,
-        updatedAt: schema.taskLinks.updatedAt,
-        chatName: schema.chats.name,
-      })
+  app.get("/admin/tasks", async (request) => {
+    const includeDone = ["1", "true"].includes(String((request.query as { includeDone?: string }).includeDone ?? ""));
+    // Estado EN VIVO: refresca desde el gestor (Linear/Jira) antes de mostrar.
+    const links = await db
+      .select()
       .from(schema.taskLinks)
-      .innerJoin(schema.chats, eq(schema.taskLinks.chatId, schema.chats.id))
       .orderBy(desc(schema.taskLinks.updatedAt))
-      .limit(200);
+      .limit(300);
+    const enriched = await refreshLinks(links);
+
+    // Nombres de chat para la columna "Chat".
+    const chatRows = await db.select({ id: schema.chats.id, name: schema.chats.name }).from(schema.chats);
+    const chatName = new Map(chatRows.map((c) => [c.id, c.name]));
+
+    return enriched
+      .filter((l) => includeDone || !l.done) // por defecto: solo abiertos
+      .slice(0, 200)
+      .map((l) => ({
+        id: l.id,
+        chatId: l.chatId,
+        provider: l.provider,
+        taskKey: l.taskKey,
+        summary: l.summary,
+        status: l.status,
+        priority: l.priority,
+        assignee: l.assignee,
+        lastAction: l.lastAction,
+        updatedAt: l.updatedAt,
+        chatName: chatName.get(l.chatId) ?? "",
+        url: l.url,
+        done: l.done,
+      }));
   });
 
   /* ------------------------------- Ajustes ---------------------------------- */

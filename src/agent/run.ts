@@ -9,6 +9,7 @@ import { buildSystemPrompt } from "./prompts.js";
 import { buildUserContext } from "./context.js";
 import { TOOL_DEFINITIONS, ToolExecutor } from "./tools.js";
 import { getTaskProvider } from "../tasks/index.js";
+import { refreshChatLinks } from "../tasks/live.js";
 
 const log = logger("agent");
 
@@ -73,6 +74,13 @@ export async function runAgentForChat(chatId: number): Promise<void> {
   );
 
   try {
+    // Estado EN VIVO: refresca en task_links el estado real de los tickets del
+    // chat (por si se cerraron a mano) para que el contexto anti-duplicados sea
+    // fiel. No bloquea la ejecución si el gestor falla.
+    await refreshChatLinks(chatId).catch((err) =>
+      log.warn(`No se pudieron refrescar los tickets del chat ${chatId}`, err),
+    );
+
     const system = buildSystemPrompt({
       settings,
       providerName: cfg.TASK_PROVIDER,
