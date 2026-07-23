@@ -328,11 +328,18 @@ export const linearProvider: TaskProvider = {
 
   async listAssignableUsers(query) {
     const q = query.trim();
-    const filter = q ? `, filter:{ name:{ containsIgnoreCase:$q } }` : "";
-    const data = await gql<{ users: { nodes: LinearUser[] } }>(
-      `query($q:String){ users(first:20${filter}){ nodes{ id displayName name email active } } }`,
-      q ? { q } : {},
-    );
+    // OJO: con q vacío NO se declara $q (GraphQL rechaza variables sin usar, que
+    // era justo por lo que el panel se quedaba sin lista → campo de texto).
+    const USER_FIELDS = "nodes{ id displayName name email active }";
+    const data = q
+      ? await gql<{ users: { nodes: LinearUser[] } }>(
+          `query($q:String!){ users(first:50, filter:{ name:{ containsIgnoreCase:$q } }){ ${USER_FIELDS} } }`,
+          { q },
+        )
+      : await gql<{ users: { nodes: LinearUser[] } }>(
+          `query{ users(first:50){ ${USER_FIELDS} } }`,
+          {},
+        );
     return (data.users.nodes ?? [])
       .filter((u) => u.active !== false)
       .map(
