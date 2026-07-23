@@ -3,6 +3,7 @@ import { logger } from "../log.js";
 import type {
   AssignableUser,
   CreateTaskInput,
+  MediaFile,
   TaskDetail,
   TaskProvider,
   TaskSummary,
@@ -349,6 +350,60 @@ export const linearProvider: TaskProvider = {
           email: u.email ?? null,
         }),
       );
+  },
+
+  async attachMediaToTask(key, files: MediaFile[]) {
+    if (!files.length) return;
+    const issue = await fetchIssueByKey(key);
+    const parts: string[] = [];
+    for (const f of files) {
+      try {
+        // 1) Pedir a Linear una URL de subida.
+        const up = await gql<{
+          fileUpload: {
+            success: boolean;
+            uploadFile: { uploadUrl: string; assetUrl: string; headers: { key: string; value: string }[] };
+          };
+        }>(
+          `mutation($contentType:String!, $filename:String!, $size:Int!){
+             fileUpload(contentType:$contentType, filename:$filename, size:$size){
+               success uploadFile{ uploadUrl assetUrl headers{ key value } }
+             }
+           }`,
+          { contentType: f.contentType, filename: f.filename, size: f.data.length },
+        );
+        const uf = up.fileUpload?.uploadFile;
+        if (!up.fileUpload?.success || !uf) {
+          log.warn(`Linear no dio URL de subida para ${f.filename}`);
+          continue;
+        }
+        // 2) Subir los bytes al storage con las cabeceras que indica Linear.
+        const headers: Record<string, string> = { "Content-Type": f.contentType };
+        for (const h of uf.headers ?? []) headers[h.key] = h.value;
+        const put = await fetch(uf.uploadUrl, {
+          method: "PUT",
+          headers,
+          body: new Uint8Array(f.data),
+        });
+        if (!put.ok) {
+          log.warn(`Subida de ${f.filename} falló: HTTP ${put.status}`);
+          continue;
+        }
+        // 3) Imagen → se embebe (preview); resto → enlace.
+        parts.push(
+          f.contentType.startsWith("image/")
+            ? `![${f.filename}](${uf.assetUrl})`
+            : `[${f.filename}](${uf.assetUrl})`,
+        );
+      } catch (err) {
+        log.warn(`Error adjuntando ${f.filename}`, err);
+      }
+    }
+    if (!parts.length) throw new Error("No se pudo subir ningún adjunto a Linear.");
+    await gql(`mutation($input:CommentCreateInput!){ commentCreate(input:$input){ success } }`, {
+      input: { issueId: issue.id, body: `📎 Adjuntos del chat:\n\n${parts.join("\n\n")}` },
+    });
+    log.info(`${parts.length} adjunto(s) subido(s) a ${key}`);
   },
 
   async healthcheck() {

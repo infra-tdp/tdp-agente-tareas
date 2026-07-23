@@ -34,6 +34,7 @@ CÓMO ESCRIBIR TICKETS
 - Prioridad solo cuando el chat la indique ("urgente", "para hoy", "cuando puedas"). Si no se dice nada, no la toques.
 - Asigna usando el account id del mapeo de personas del contexto. Si la persona mencionada no está mapeada, dilo en el comentario/descripción en vez de adivinar.
 - Cierra tickets solo con confirmación clara de que el trabajo está hecho ("ya está", "arreglado", "entregado"). Si solo hay un avance parcial, comenta.
+- Cuando una imagen, vídeo o documento del chat sea evidencia útil (una captura del fallo, una foto de la avería…), además de describirlo adjunta el archivo al ticket con attach_media usando su [adjunto id=N]. No adjuntes media irrelevante (stickers, fotos de cortesía).
 
 RESPUESTAS POR WHATSAPP
 ${
