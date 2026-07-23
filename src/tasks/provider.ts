@@ -11,6 +11,8 @@ export type TaskSummary = {
   assignee: string | null;
   updatedAt: string | null;
   url: string;
+  /** true si el ticket está cerrado (completado o cancelado/done). */
+  done: boolean;
 };
 
 export type TaskDetail = TaskSummary & {
@@ -47,6 +49,8 @@ export interface TaskProvider {
   /** Búsqueda por texto libre (y opcionalmente query nativa del proveedor). */
   searchTasks(text: string, opts?: { nativeQuery?: string; includeDone?: boolean }): Promise<TaskSummary[]>;
   getTask(key: string): Promise<TaskDetail>;
+  /** Estado actual (en vivo) de varios tickets por su clave, en una sola llamada. */
+  getTasksByKeys(keys: string[]): Promise<TaskSummary[]>;
   createTask(input: CreateTaskInput): Promise<TaskSummary>;
   updateTask(key: string, patch: UpdateTaskInput): Promise<void>;
   addComment(key: string, body: string): Promise<void>;

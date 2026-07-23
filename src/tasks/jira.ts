@@ -86,7 +86,7 @@ async function jiraFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 type JiraIssueFields = {
   summary?: string;
-  status?: { name?: string };
+  status?: { name?: string; statusCategory?: { key?: string } };
   priority?: { name?: string };
   assignee?: { displayName?: string };
   updated?: string;
@@ -111,6 +111,7 @@ function toSummary(issue: { key: string; fields?: JiraIssueFields }): TaskSummar
     assignee: f.assignee?.displayName ?? null,
     updatedAt: f.updated ?? null,
     url: issueUrl(issue.key),
+    done: f.status?.statusCategory?.key === "done",
   };
 }
 
@@ -145,6 +146,23 @@ export const jiraProvider: TaskProvider = {
         body: JSON.stringify({
           jql,
           maxResults: 20,
+          fields: ["summary", "status", "priority", "assignee", "updated"],
+        }),
+      },
+    );
+    return (data.issues ?? []).map(toSummary);
+  },
+
+  async getTasksByKeys(keys) {
+    if (keys.length === 0) return [];
+    const list = keys.map((k) => `"${k.replace(/[^A-Z0-9-]/gi, "")}"`).join(",");
+    const data = await jiraFetch<{ issues?: { key: string; fields?: JiraIssueFields }[] }>(
+      `/rest/api/3/search/jql`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          jql: `key in (${list})`,
+          maxResults: 100,
           fields: ["summary", "status", "priority", "assignee", "updated"],
         }),
       },
