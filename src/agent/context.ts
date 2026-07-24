@@ -27,7 +27,14 @@ function renderMessage(msg: Msg, isNew: boolean): string {
   const lines: string[] = [];
   const header = `${marker}[${time}] ${who} (${shortJid(msg.senderJid)}) · ${msg.type}`;
   lines.push(header);
-  if (msg.quotedText) lines.push(`  (en respuesta a: "${msg.quotedText.slice(0, 200)}")`);
+  // Señal fuerte de a qué asunto pertenece el mensaje: WhatsApp deja explícito
+  // que es una respuesta A OTRO mensaje concreto, no al hilo de conversación que
+  // esté activo en ese momento. Se marca en mayúsculas y separado para que no se
+  // pierda entre el resto de líneas (ver regla en el prompt: prima sobre la
+  // conversación adyacente).
+  if (msg.quotedText) {
+    lines.push(`  ⤷ RESPUESTA A OTRO MENSAJE: "${msg.quotedText.slice(0, 200)}"`);
+  }
   if (msg.text) lines.push(`  ${msg.text}`);
   if (msg.transcript) lines.push(`  ${msg.transcript}`);
   if (!msg.text && !msg.transcript) lines.push(`  [${msg.type} sin contenido de texto]`);
