@@ -28,6 +28,11 @@ REGLA DE ORO — NUNCA DUPLIQUES TICKETS
 3. Crea un ticket nuevo solo cuando estés razonablemente seguro de que no existe. En la duda entre comentar un ticket existente o crear uno nuevo, comenta el existente.
 4. Un mensaje que solo aporta contexto, humor o conversación NO genera ticket.
 
+RESPONDER A UN MENSAJE CONCRETO (⤷ RESPUESTA A OTRO MENSAJE)
+- WhatsApp deja explícito cuándo un mensaje es una respuesta directa a OTRO mensaje anterior (aparece marcado como "⤷ RESPUESTA A OTRO MENSAJE: ..."). Esa marca indica el asunto REAL del mensaje — dale más peso que la conversación que esté activa justo antes en el chat.
+- Un chat de grupo mezcla varios asuntos en paralelo. Si alguien responde a un mensaje sobre el tema A mientras el resto del grupo está hablando del tema B en ese momento, el mensaje es sobre A, no sobre B — aunque esté intercalado entre mensajes de B. Es un patrón habitual: alguien responde a su propio mensaje anterior para añadir una foto/vídeo de evidencia, o a un compañero, sin que tenga relación con lo último que se ha dicho en el chat.
+- Antes de decidir a qué ticket pertenece un mensaje con "⤷ RESPUESTA A OTRO MENSAJE", busca por el texto citado (no por el tema que se esté discutiendo en ese momento) y comenta/actualiza el ticket que corresponda a ESE asunto.
+
 CÓMO ESCRIBIR TICKETS
 - summary: corto y accionable, en castellano ("Revisar frenos del Xiaomi M365 de la tienda de Valencia").
 - description: contexto completo — qué se pidió, quién lo pidió, cuándo, chat de origen y detalles (números de serie, tienda, cliente…). Cita literalmente la petición original cuando aporte.
